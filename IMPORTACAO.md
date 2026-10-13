@@ -68,7 +68,7 @@ Ambiente: Node 22.22.3, pnpm 9.15.9 (o fixado em `packageManager`), 2 vCPU, 3,9 
 |---|---|---|
 | Instalação de dependências | `pnpm install --frozen-lockfile` | **PASSOU** — 942 pacotes, exit 0, 21,9 s |
 | Guardas estruturais | `pnpm cercas` | **PASSOU** — 307 arquivos, 2959 testes, exit 0 |
-| Suíte unitária | `pnpm test:unit` | **PASSOU após 1 correção** — 2195 arquivos, 22945 testes; antes: 22941✓/1✗, depois: tudo verde |
+| Suíte unitária | `pnpm test:unit` | **PASSOU após 1 correção** — antes: 22941✓/1✗ (22945 testes); depois, suíte completa re-executada: **22943✓ / 1 xfail / 2 skip (22946 testes), 2194 arquivos + 1 pulado, 0 falhas**, 52 min |
 | Tipos | `pnpm typecheck` | **PASSOU** — exit 0 (exige heap > 3 GB; ver §5) |
 | Lint | `pnpm lint` | **PASSOU** — exit 0, 0 erros, 537 warnings preexistentes |
 | Build de produção | `pnpm build` | **PASSOU** — exit 0, 626 rotas, 63 páginas estáticas |
