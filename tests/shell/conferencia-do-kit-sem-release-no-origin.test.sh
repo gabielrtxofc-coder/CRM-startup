@@ -54,6 +54,9 @@ stub_update() {  # stub_update <arquivo>
   cat > "$1" <<'EOF'
 #!/usr/bin/env bash
   # E AS REGRAS DE ISOLAMENTO SÃO CONFERIDAS (stub do teste)
+  if [ -n "${GH_TOKEN:-}${GITHUB_TOKEN:-}${AUDIT_API_KEY:-}" ]; then
+    printf 'credencial exposta\n' > "$CREDENTIAL_LEAK_FILE"
+  fi
   esperadas="$(awk 'BEGIN { print "politica_a|tabela_a" }')"
   faltando="$(printf '')"
   echo "depois do recorte: o script nunca executa isto" >&2; exit 97
@@ -138,7 +141,44 @@ rodar "$F" CONFERENCIA_KIT_RELEASE=v9.9.9 CONFERENCIA_KIT_UPSTREAM_GIT="$UP"
 check "sai com 1" saiu_com 1
 check "nomeia a tag ausente" err_tem "FATAL: a tag v9.9.9 não existe no origin nem no upstream"
 
-echo '── 5. Upstream sem a v1.63.0 fixa: a conferência dela REPROVA, não é pulada'
+echo '── 5. Falha transitória ao consultar origin: NÃO mascara consultando upstream'
+F="$(montar_fork)"
+mkdir -p "$WORK/git-shim"
+REAL_GIT="$(command -v git)"
+cat > "$WORK/git-shim/git" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+  *"ls-remote --tags origin"*) echo origin-query-failed >> "\$GIT_SHIM_LOG"; exit 128 ;;
+  *"ls-remote --tags"*) echo upstream-query-unexpected >> "\$GIT_SHIM_LOG" ;;
+esac
+exec "$REAL_GIT" "\$@"
+EOF
+chmod +x "$WORK/git-shim/git"
+GIT_SHIM_LOG="$WORK/git-shim.log"; export GIT_SHIM_LOG; : > "$GIT_SHIM_LOG"
+rodar "$F" PATH="$WORK/git-shim:$PATH" CONFERENCIA_KIT_UPSTREAM_GIT="$UP" CONFERENCIA_KIT_UPSTREAM_API="file://$WORK/latest-1.64.json"
+check "sai com 1" saiu_com 1
+check "identifica falha ao consultar origin" err_tem "não consegui consultar as tags do origin"
+check "não tenta upstream após erro transitório do origin" bash -c '! grep -q upstream-query-unexpected "$1"' _ "$GIT_SHIM_LOG"
+
+echo '── 6. Falha transitória no upstream: distingue erro de tag ausente'
+F="$(montar_fork)"
+cat > "$WORK/git-shim/git" <<EOF
+#!/usr/bin/env bash
+case "\$*" in
+  *"ls-remote --tags origin"*) exec "$REAL_GIT" "\$@" ;;
+  *"ls-remote --tags"*) echo upstream-query-failed >> "\$GIT_SHIM_LOG"; exit 128 ;;
+  *fetch*) echo unexpected-fetch >> "\$GIT_SHIM_LOG"; exit 128 ;;
+esac
+exec "$REAL_GIT" "\$@"
+EOF
+chmod +x "$WORK/git-shim/git"
+GIT_SHIM_LOG="$WORK/upstream-shim.log"; export GIT_SHIM_LOG; : > "$GIT_SHIM_LOG"
+rodar "$F" PATH="$WORK/git-shim:$PATH" CONFERENCIA_KIT_UPSTREAM_GIT="$UP"
+check "sai com 1" saiu_com 1
+check "explica a falha de consulta no upstream" err_tem "falha ao consultar tags do upstream"
+check "não chama fetch após erro de consulta" bash -c '! grep -q unexpected-fetch "$1"' _ "$GIT_SHIM_LOG"
+
+echo '── 7. Upstream sem a v1.63.0 fixa: a conferência dela REPROVA, não é pulada'
 F="$(montar_fork)"
 rodar "$F" CONFERENCIA_KIT_UPSTREAM_GIT="$UP_SEM_163" CONFERENCIA_KIT_UPSTREAM_API="file://$WORK/latest-1.64.json"
 check "sai com 1" saiu_com 1
@@ -159,12 +199,14 @@ EOF
 chmod +x "$WORK/bin/gh"
 F="$(montar_fork)"
 GH_LOG="$WORK/gh.log"; : > "$GH_LOG"
-rodar "$F" PATH="$WORK/bin:$PATH" GH_LOG="$GH_LOG" GH_TOKEN=x CONFERENCIA_KIT_UPSTREAM_GIT="$UP"
+CREDENTIAL_LEAK_FILE="$WORK/credential-leak"; rm -f "$CREDENTIAL_LEAK_FILE"
+rodar "$F" PATH="$WORK/bin:$PATH" GH_LOG="$GH_LOG" CREDENTIAL_LEAK_FILE="$CREDENTIAL_LEAK_FILE" GH_TOKEN=x GITHUB_TOKEN=y AUDIT_API_KEY=z CONFERENCIA_KIT_UPSTREAM_GIT="$UP"
 check "sai com 0" saiu_com 0
 check "perguntou primeiro ao origin (sem -R)" grep -qE '^release view --json tagName -q \.tagName$' "$GH_LOG"
 check "depois ao upstream padrão, pelo slug" grep -qF -- "release view -R melgarafael/DeskcommCRM --json tagName -q .tagName" "$GH_LOG"
 check "confere a release que o gh devolveu (v1.64.0)" out_tem "✓ update.sh da última release (v1.64.0)"
 check "avisa que usou o upstream" err_tem "aviso: o origin não tem release publicada"
+check "o trecho avaliado não recebeu tokens nem outra chave de API" bash -c '[ ! -e "$1" ]' _ "$CREDENTIAL_LEAK_FILE"
 
 echo
 if [ "$FAILS" -eq 0 ]; then echo "OK — a conferência do kit não depende de release no origin"; else echo "FALHOU: $FAILS"; exit 1; fi

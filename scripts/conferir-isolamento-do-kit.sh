@@ -120,12 +120,29 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/deskcomm-update-sh.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 update_sh_da() {  # update_sh_da <tag> — caminho de uma cópia do update.sh da tag
   if ! git -C "$ROOT" rev-parse -q --verify "refs/tags/$1^{commit}" >/dev/null; then
-    local profundidade=""
+    local profundidade="" origem_tag
     [ "$(git -C "$ROOT" rev-parse --is-shallow-repository)" = true ] && profundidade="--depth=1"
-    # O origin primeiro; só se ele não tem a tag (fork ou cópia sem tags) o upstream.
-    git -C "$ROOT" fetch -q --no-tags $profundidade origin "+refs/tags/$1:refs/tags/$1" 2>/dev/null \
-      || git -C "$ROOT" fetch -q --no-tags $profundidade "$UPSTREAM_GIT" "+refs/tags/$1:refs/tags/$1" \
-      || { echo "FATAL: a tag $1 não existe no origin nem no upstream ($UPSTREAM_GIT)." >&2; return 1; }
+    # Distingue ausência confirmada (ls-remote bem-sucedido, sem resultado) de
+    # falha de rede/autorização. Somente ausência permite consultar o upstream.
+    if ! origem_tag="$(git -C "$ROOT" ls-remote --tags origin "refs/tags/$1" "refs/tags/$1^{}")"; then
+      echo "FATAL: não consegui consultar as tags do origin para $1; não vou mascarar falha de rede/autorização com fallback." >&2
+      return 1
+    fi
+    local fonte=origin
+    if [ -z "$origem_tag" ]; then
+      echo "aviso: a tag $1 está ausente no origin; tentando upstream ($UPSTREAM_GIT)." >&2
+      if ! origem_tag="$(git ls-remote --tags "$UPSTREAM_GIT" "refs/tags/$1" "refs/tags/$1^{}")"; then
+        echo "FATAL: falha ao consultar tags do upstream para $1 ($UPSTREAM_GIT)." >&2
+        return 1
+      fi
+      [ -n "$origem_tag" ] || { echo "FATAL: a tag $1 não existe no origin nem no upstream ($UPSTREAM_GIT)." >&2; return 1; }
+      fonte="$UPSTREAM_GIT"
+    fi
+    # A busca só ocorre na fonte cuja presença foi confirmada acima.
+    if ! git -C "$ROOT" fetch -q --no-tags $profundidade "$fonte" "+refs/tags/$1:refs/tags/$1"; then
+      echo "FATAL: a tag $1 foi anunciada por $fonte, mas não pôde ser buscada; sem fallback após erro de fetch." >&2
+      return 1
+    fi
   fi
   git -C "$ROOT" show "$1:hostgator-setup-kit/update.sh" > "$TMP/$1"
   printf '%s' "$TMP/$1"
@@ -146,6 +163,16 @@ conferir() {
   if ! saida="$(
     cd "$ROOT"
     # O kit roda sob `set -euo pipefail` (_common.sh), e o trecho também.
+    # O trecho vem de um update.sh de release e é avaliado como shell. Ele só
+    # precisa do contexto local do banco; jamais deve herdar credenciais do CI.
+    # Remova nomes comuns de segredos além dos tokens GitHub explicitamente
+    # usados acima para consultar metadados/repositórios.
+    while IFS= read -r nome; do
+      case "${nome^^}" in
+        *TOKEN*|*SECRET*|*PASSWORD*|*CREDENTIAL*|*API_KEY*|*PRIVATE_KEY*|*AUTH*) unset "$nome" ;;
+      esac
+    done < <(compgen -e)
+    unset GH_TOKEN GITHUB_TOKEN BASH_ENV ENV
     url_do_schema() { printf 'test-db'; }
     pg_container() {
       while [ $# -gt 0 ] && [ "${1#-}" != "$1" ]; do shift; done
