@@ -169,7 +169,7 @@ conferir() {
     # usados acima para consultar metadados/repositórios.
     while IFS= read -r nome; do
       case "${nome^^}" in
-        *TOKEN*|*SECRET*|*PASSWORD*|*CREDENTIAL*|*API_KEY*|*PRIVATE_KEY*|*AUTH*) unset "$nome" ;;
+        *TOKEN*|*SECRET*|*PASS*|*CREDENTIAL*|*KEY*|*COOKIE*|*AUTH*) unset "$nome" ;;
       esac
     done < <(compgen -e)
     unset GH_TOKEN GITHUB_TOKEN BASH_ENV ENV

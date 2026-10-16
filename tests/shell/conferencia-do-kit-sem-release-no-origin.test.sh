@@ -54,7 +54,7 @@ stub_update() {  # stub_update <arquivo>
   cat > "$1" <<'EOF'
 #!/usr/bin/env bash
   # E AS REGRAS DE ISOLAMENTO SÃO CONFERIDAS (stub do teste)
-  if [ -n "${GH_TOKEN:-}${GITHUB_TOKEN:-}${AUDIT_API_KEY:-}" ]; then
+  if [ -n "${GH_TOKEN:-}${GITHUB_TOKEN:-}${AUDIT_API_KEY:-}${AWS_ACCESS_KEY_ID:-}${SESSION_COOKIE:-}" ]; then
     printf 'credencial exposta\n' > "$CREDENTIAL_LEAK_FILE"
   fi
   esperadas="$(awk 'BEGIN { print "politica_a|tabela_a" }')"
@@ -200,7 +200,7 @@ chmod +x "$WORK/bin/gh"
 F="$(montar_fork)"
 GH_LOG="$WORK/gh.log"; : > "$GH_LOG"
 CREDENTIAL_LEAK_FILE="$WORK/credential-leak"; rm -f "$CREDENTIAL_LEAK_FILE"
-rodar "$F" PATH="$WORK/bin:$PATH" GH_LOG="$GH_LOG" CREDENTIAL_LEAK_FILE="$CREDENTIAL_LEAK_FILE" GH_TOKEN=x GITHUB_TOKEN=y AUDIT_API_KEY=z CONFERENCIA_KIT_UPSTREAM_GIT="$UP"
+rodar "$F" PATH="$WORK/bin:$PATH" GH_LOG="$GH_LOG" CREDENTIAL_LEAK_FILE="$CREDENTIAL_LEAK_FILE" GH_TOKEN=x GITHUB_TOKEN=y AUDIT_API_KEY=z AWS_ACCESS_KEY_ID=aws-key SESSION_COOKIE=cookie CONFERENCIA_KIT_UPSTREAM_GIT="$UP"
 check "sai com 0" saiu_com 0
 check "perguntou primeiro ao origin (sem -R)" grep -qE '^release view --json tagName -q \.tagName$' "$GH_LOG"
 check "depois ao upstream padrão, pelo slug" grep -qF -- "release view -R melgarafael/DeskcommCRM --json tagName -q .tagName" "$GH_LOG"
