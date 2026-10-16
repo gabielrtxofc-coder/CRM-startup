@@ -136,7 +136,11 @@ function montarMundoDeEnvio(opts: MundoOpts = {}) {
     status: "rascunho",
     titulo: "Proposta de Teste",
     condicoes: "Condições",
-    valid_until: "2026-12-31",
+    // Relativa ao relógio, e não uma data absoluta: a rota só agenda o retorno
+    // automático se ele cair DENTRO da validade (`dentroDaValidade`, em route.ts). Com
+    // "2026-12-31" fixo, três casos (retorno agendado, herança do retorno_id, agendamento
+    // fora da janela) passam a reprovar sozinhos a partir de 01/01/2027.
+    valid_until: new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10),
     total_cents: 500000,
     moeda: "BRL",
     created_at: "2026-09-26T00:00:00.000Z",
