@@ -54,6 +54,38 @@ ZLIB_TAG="v1.3.1"
 
 falta() { echo "ERRO: $*" >&2; exit 1; }
 
+# Nunca execute arquivos de uma árvore em /tmp que possa ter sido plantada ou
+# alterada por outro usuário. Rejeita symlinks, dono inesperado e permissões de
+# escrita de grupo/outros antes de ler o marcador ou antepor bin/ ao PATH.
+validar_base_segura() {
+  local canon pai uid dono modo
+  uid="$(id -u)"
+  [ ! -L "$BASE" ] || falta "diretório de dados é symlink: $BASE"
+  canon="$(realpath -m -- "$BASE")" || falta "não consegui canonicalizar $BASE"
+  [ "$canon" = "$BASE" ] || falta "use um caminho canônico (sem symlink nos diretórios pais): $BASE"
+  pai="$(dirname "$BASE")"
+  [ -d "$pai" ] || falta "diretório pai inexistente: $pai"
+  [ ! -L "$pai" ] || falta "diretório pai é symlink: $pai"
+  dono="$(stat -c %u -- "$pai")"; modo="$(stat -c %a -- "$pai")"
+  [ "$dono" = "$uid" ] || [ "$dono" = 0 ] || falta "diretório pai pertence a outro usuário: $pai"
+  # Diretórios globais como /tmp são permitidos apenas com sticky bit.
+  if (( (8#$modo & 8#0022) != 0 )) && (( (8#$modo & 8#1000) == 0 )); then
+    falta "diretório pai permite escrita por terceiros sem sticky bit: $pai"
+  fi
+  [ -e "$BASE" ] || return 0
+  [ -d "$BASE" ] || falta "caminho de dados não é diretório: $BASE"
+  dono="$(stat -c %u -- "$BASE")"; modo="$(stat -c %a -- "$BASE")"
+  [ "$dono" = "$uid" ] || falta "diretório de dados pertence a outro usuário: $BASE"
+  (( (8#$modo & 8#0022) == 0 )) || falta "diretório de dados permite escrita por grupo/outros: $BASE"
+  for pai in "$BASE/bin" "$BASE/bin/docker" "$BASE/.pronto"; do
+    [ ! -L "$pai" ] || falta "arquivo de preparação é symlink: $pai"
+    [ ! -e "$pai" ] && continue
+    dono="$(stat -c %u -- "$pai")"; modo="$(stat -c %a -- "$pai")"
+    [ "$dono" = "$uid" ] || falta "arquivo de preparação pertence a outro usuário: $pai"
+    (( (8#$modo & 8#0022) == 0 )) || falta "arquivo permite escrita por grupo/outros: $pai"
+  done
+}
+
 escrever_duble_de_docker() {  # escrever_duble_de_docker — grava $BASE/bin/docker
   cat > "$BASE/bin/docker" <<EOF
 #!/usr/bin/env bash
@@ -143,6 +175,7 @@ EOF
 }
 
 preparar() {
+  validar_base_segura
   if [ -f "$BASE/.pronto" ]; then echo "já preparado em $BASE"; return 0; fi
   [ "$(uname -s)" = Linux ] && [ "$(uname -m)" = x86_64 ] || falta "só Linux x86_64 (o wheel é manylinux x86_64)"
   [ "$(id -u)" -ne 0 ] || falta "o PostgreSQL se recusa a rodar como root; rode como usuário comum"
@@ -249,6 +282,7 @@ EOF
 }
 
 rodar() {  # rodar <script do package.json> [args…]
+  validar_base_segura
   [ -f "$BASE/.pronto" ] || falta "ainda não preparado — rode primeiro: bash scripts/test-db-sem-docker.sh preparar"
   command -v pnpm >/dev/null 2>&1 || falta "falta o pnpm (corepack enable)"
   echo "==> sem Docker: PostgreSQL local de $BASE (NÃO é a imagem do CI — leia o cabeçalho deste script)" >&2
@@ -260,6 +294,7 @@ case "${1:-}" in
   preparar) preparar ;;
   test:db|test:db:update) rodar "$@" ;;
   limpar)
+    validar_base_segura
     for d in "$BASE"/state/*/; do
       [ -d "$d/data" ] && "$BASE/pg/bin/pg_ctl" -D "$d/data" -m immediate -w stop >/dev/null 2>&1 || true
     done
