@@ -17,7 +17,7 @@
  * pergunta pela capacidade `reportConversion` do adapter. O provider concreto
  * aparece aqui só porque é ele quem implementa a capacidade hoje.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { conversaoDeVendaHandler } from "@/lib/conversoes/envio.handler";
 import { conversaoDeEtapaMetaHandler } from "@/lib/conversoes/etapa-meta.handler";
@@ -398,6 +398,18 @@ describe("o evento de ETAPA da Meta também sai pelo canal", () => {
   beforeEach(() => {
     gravados.length = 0;
     tabelasLidas.length = 0;
+    // O relógio é FIXADO um minuto depois de `ENTROU_NA_ETAPA`. O transporte direto da
+    // Meta recusa evento com mais de 7 dias (`IDADE_MAXIMA_MS`, em
+    // lib/plataformas-de-anuncio/meta/conversions.ts) e `ENTROU_NA_ETAPA` é data
+    // ABSOLUTA: sem fixar o relógio, o caso "conexão direta ligada" reprovou sozinho a
+    // partir de 13/10/2026 16:32Z — sete dias depois da data do fixture, sem nenhuma
+    // mudança de código. Só o `Date` é simulado: `fetch` e as promessas seguem reais.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(Date.parse(ENTROU_NA_ETAPA) + 60_000);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("sem conexão direta e com a chave ligada: sai pelo canal com o nome padrão, o instante da etapa e sem valor", async () => {
