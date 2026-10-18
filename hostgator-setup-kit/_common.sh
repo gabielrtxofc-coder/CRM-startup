@@ -1889,7 +1889,7 @@ ler_rodada_do_banco() {
     "$([ "$disputa" = "1" ] && printf true || printf false)" "$retentativas" "$passada"
 }
 
-# ── As três imagens que NÓS publicamos ───────────────────────────────────────
+# ── As quatro imagens que NÓS publicamos ─────────────────────────────────────
 # O namespace é constante e literal de propósito: ele está gravado no .env de
 # toda instalação viva, e derivá-lo de variável faria o kit antigo (que já está
 # no disco do cliente) e o novo montarem strings diferentes.
@@ -1901,7 +1901,7 @@ ler_rodada_do_banco() {
 # `publish-image.yml` digam o mesmo. Se você é um fork, é lá que está a lista do
 # que trocar junto — e, desde 18/09/2026, o CI do SEU fork não cobra este valor:
 # a asserção só vale quando o dono do runner é o dono deste repositório.
-IMG_NS="ghcr.io/melgarafael"
+IMG_NS="ghcr.io/gabielrtxofc-coder"
 IMG_APP="${IMG_NS}/deskcommcrm"
 IMG_WORKER="${IMG_NS}/deskcomm-worker"
 IMG_SCHEDULER="${IMG_NS}/deskcomm-scheduler"
@@ -1921,7 +1921,7 @@ IMG_VOICE_AGENT="${IMG_NS}/deskcomm-voice-agent"
 # alguém porque não deu para resolver um número de versão seria trocar um
 # problema de previsibilidade por um de disponibilidade.
 ultima_versao_publicada() {
-  local url="${1:-https://github.com/melgarafael/DeskcommCRM.git}" ref
+  local url="${1:-https://github.com/gabielrtxofc-coder/CRM-startup.git}" ref
   command -v git >/dev/null 2>&1 || return 0
   # `grep -v -- -` descarta PRERELEASE (v1.11.0-rc1, v1.1.1-jmpo.1 — esta última
   # existe de verdade neste repo). O `--sort=-v:refname` do git põe o prerelease

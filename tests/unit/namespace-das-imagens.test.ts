@@ -6,10 +6,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   corridaInternaDeFork,
-  DONO_DESTE_REPO,
   donoConfiavelDoRunner,
   donoDo,
   NAMESPACE_DESTE_REPO,
+  URL_DESTE_REPO,
 } from "./_identidade-deste-repo";
 
 /**
@@ -125,12 +125,14 @@ const ENV_EXEMPLO = fs.readFileSync(path.join(RAIZ, ".env.hostgator.example"), "
  */
 const RECADO_AO_FORK =
   "Publicando as próprias imagens? Troque o namespace em três lugares, e só neles: " +
-  "IMG_NS em hostgator-setup-kit/_common.sh, o default das três linhas `image:` de " +
-  "docker-compose.prod.yml, e as três *_IMAGE de .env.hostgator.example. Depois " +
-  "atualize NAMESPACE_DESTE_REPO neste arquivo, e a URL do repositório em " +
-  "install.sh, comecar.sh, _common.sh e nos três Dockerfiles (os casos abaixo " +
-  "prendem os seis). Todo o resto deriva de IMG_NS. Se você está lendo isto no CI " +
-  "do seu próprio fork, houve engano nosso: lá este caso não cobra nada.";
+  "IMG_NS em hostgator-setup-kit/_common.sh, o default das linhas `image:` de " +
+  "docker-compose.prod.yml, e as *_IMAGE de .env.hostgator.example. Depois " +
+  "atualize NAMESPACE_DESTE_REPO (e NOME_DO_REPO, se o seu repositório não se " +
+  "chama igual) em tests/unit/_identidade-deste-repo.ts, e a URL do repositório " +
+  "derivada deles em install.sh, comecar.sh, _common.sh e nos quatro Dockerfiles " +
+  "(os casos abaixo prendem os sete). Todo o resto deriva de IMG_NS. Se você " +
+  "está lendo isto no CI do seu próprio fork, houve engano nosso: lá este caso " +
+  "não cobra nada.";
 
 /*
  * ⚠️ ESTA FRASE JÁ FOI FALSA, e a falsidade custava caro a quem a seguia.
@@ -231,19 +233,20 @@ describe("o default do compose diz o mesmo que o kit", () => {
 
 describe("o kit aponta para o que o CI realmente publica", () => {
   it("os defaults de código e os labels de origem apontam para este repositório", () => {
-    // A URL DERIVA do namespace, e não é economia de digitação: é o que prende a
-    // deferência lá de cima. Quem decide se a corrida é de um fork compara o dono
-    // do runner com o dono de `NAMESPACE_DESTE_REPO` — logo, um PR que editasse
-    // SÓ aquele literal faria a âncora se calar contra o upstream. Derivando, o
-    // mesmo commit fica vermelho AQUI, contra seis arquivos que ele não tocou.
+    // A URL DERIVA da identidade (dono do namespace + NOME_DO_REPO), e não é
+    // economia de digitação: é o que prende a deferência lá de cima. Quem decide
+    // se a corrida é de um fork compara o dono do runner com o dono de
+    // `NAMESPACE_DESTE_REPO` — logo, um PR que editasse SÓ aquele literal faria a
+    // âncora se calar contra o upstream. Derivando, o mesmo commit fica vermelho
+    // AQUI, contra sete arquivos que ele não tocou.
     // Medido nos dois sentidos, com a URL fixa e com ela derivada (ver cabeçalho).
-    const repo = `https://github.com/${DONO_DESTE_REPO}/DeskcommCRM`;
+    const repo = URL_DESTE_REPO;
     for (const script of ["install.sh", "comecar.sh"]) {
       const texto = fs.readFileSync(path.join(RAIZ, "hostgator-setup-kit", script), "utf8");
       expect(texto).toContain(`REPO_URL="\${REPO_URL:-${repo}.git}"`);
     }
     expect(COMUM).toContain(`local url="\${1:-${repo}.git}" ref`);
-    for (const dockerfile of ["Dockerfile", "Dockerfile.worker", "Dockerfile.scheduler"]) {
+    for (const dockerfile of ["Dockerfile", "Dockerfile.worker", "Dockerfile.scheduler", "Dockerfile.voice-agent"]) {
       expect(fs.readFileSync(path.join(RAIZ, dockerfile), "utf8")).toContain(
         `org.opencontainers.image.source="${repo}"`,
       );
