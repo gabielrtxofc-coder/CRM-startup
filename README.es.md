@@ -39,7 +39,7 @@
 > devuelve el comando exacto para tu caso:
 >
 > ```bash
-> curl -fsSL https://raw.githubusercontent.com/melgarafael/DeskcommCRM/main/hostgator-setup-kit/comecar.sh | bash
+> curl -fsSL https://raw.githubusercontent.com/gabielrtxofc-coder/CRM-startup/main/hostgator-setup-kit/comecar.sh | bash
 > ```
 >
 > *(¿prefieres leer antes de ejecutar? clona el repo y corre `bash hostgator-setup-kit/comecar.sh` —
@@ -73,8 +73,8 @@ presiona Enter.
 Ya dentro del VPS:
 
 ```bash
-git clone https://github.com/melgarafael/DeskcommCRM.git
-cd DeskcommCRM
+git clone https://github.com/gabielrtxofc-coder/CRM-startup.git
+cd CRM-startup
 bash hostgator-setup-kit/install.sh
 ```
 
@@ -279,8 +279,8 @@ Detalles: [`ARCHITECTURE.md`](ARCHITECTURE.md).
 > Esta sección es para quien va a tocar el código.
 
 ```bash
-git clone https://github.com/melgarafael/DeskcommCRM.git
-cd DeskcommCRM
+git clone https://github.com/gabielrtxofc-coder/CRM-startup.git
+cd CRM-startup
 
 nvm use                     # Node 22
 npm install -g pnpm && pnpm install

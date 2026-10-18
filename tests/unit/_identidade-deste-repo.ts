@@ -41,12 +41,20 @@
  * ⚠️ Ele é o que decide "esta corrida é de um fork?". Um PR consegue editar este
  * literal — e foi o que o #1130 fez. O que impede a edição de ligar a deferência
  * sozinha é a URL do repositório em `install.sh`, `comecar.sh`, `_common.sh` e
- * nos 3 Dockerfiles ser DERIVADA deste valor em
+ * nos 4 Dockerfiles ser DERIVADA deste valor (junto com `NOME_DO_REPO`) em
  * `namespace-das-imagens.test.ts`: trocar só isto deixa a URL divergente e
  * reprova lá. Não remova essa derivação pensando que é redundante — ela é o que
  * torna a âncora não-falsificável de dentro do diff.
+ *
+ * Reancorada em 2026-10-18 para a distribuição independente da startup
+ * (`gabielrtxofc-coder/CRM-startup`, fork importado de `melgarafael/DeskcommCRM`):
+ * este repositório publica as PRÓPRIAS imagens no GHCR, e o par kit/compose/.env
+ * de exemplo passou a apontar para elas — é o caminho do `RECADO_AO_FORK` em
+ * `namespace-das-imagens.test.ts`, seguido à risca (as referências que
+ * permanecem ao upstream são de compatibilidade, teste e fallback, e cada uma
+ * está justificada no relatório do PR de distribuição).
  */
-export const NAMESPACE_DESTE_REPO = "ghcr.io/melgarafael";
+export const NAMESPACE_DESTE_REPO = "ghcr.io/gabielrtxofc-coder";
 
 /**
  * O dono de uma referência `<registry>/<dono>`.
@@ -66,6 +74,26 @@ export function donoDo(namespace: string): string {
 
 /** O dono deste repositório, derivado da âncora — ele não é escrito duas vezes. */
 export const DONO_DESTE_REPO = donoDo(NAMESPACE_DESTE_REPO);
+
+/**
+ * O nome deste repositório no GitHub (`owner/NOME_DO_REPO`).
+ *
+ * É o segundo — e único outro — literal da identidade: o dono deriva do
+ * namespace, mas o NOME do repositório não tem de onde derivar, e este fork se
+ * chama `CRM-startup` enquanto o produto de origem se chama `DeskcommCRM`. Um
+ * fork que mantém o nome do produto não precisa tocar aqui.
+ */
+export const NOME_DO_REPO = "CRM-startup";
+
+/**
+ * A URL do repositório, DERIVADA dos dois literais acima.
+ *
+ * É esta string que `namespace-das-imagens.test.ts` cobra, byte a byte, em
+ * `install.sh`, `comecar.sh`, `_common.sh` e nos 4 Dockerfiles — trocar a
+ * âncora (ou o nome) sem atualizar os seis deixa o mesmo commit vermelho lá.
+ * Nunca a reescreva à mão nos scripts: derive dela.
+ */
+export const URL_DESTE_REPO = `https://github.com/${DONO_DESTE_REPO}/${NOME_DO_REPO}`;
 
 /**
  * O dono da conta que EXECUTA o workflow, ou `null` fora do GitHub Actions.
