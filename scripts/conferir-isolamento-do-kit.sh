@@ -54,7 +54,9 @@
 # anônima tem teto de 60 consultas/hora por IP, e o executor próprio é um IP só);
 # senão `ultima_release_estavel` do próprio kit (`/releases/latest`). Nunca a maior
 # tag: tag não é release publicada (ver o cabeçalho dessa função em _common.sh).
-# Sem resposta, REPROVA — gate que pula em silêncio não é gate.
+# Origin sem release nem tag (fork, cópia importada): pergunta ao upstream — o bloco
+# "O upstream" logo abaixo. Sem resposta de NENHUMA fonte, REPROVA — gate que pula em
+# silêncio não é gate.
 set -euo pipefail
 
 CONTAINER="${1:?uso: $0 <container> <banco>}"
@@ -62,12 +64,46 @@ BANCO="${2:?uso: $0 <container> <banco>}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 KIT="$ROOT/hostgator-setup-kit"
 
+# ## O upstream, quando o `origin` não tem release nem tag
+#
+# Um fork — ou uma cópia recém-importada, que é o caso do repositório da startup,
+# trazida de melgarafael/DeskcommCRM SEM as tags e SEM as releases — não tem "última
+# release publicada" nem a tag v1.63.0. Sem este fallback a conferência morria no
+# FATAL abaixo antes de medir qualquer coisa: o `test:db` caía em 16–27 s e o check
+# obrigatório `invariants` ficava vermelho em TODO PR e na main por uma razão que não
+# fala de schema (medido nos runs do CI de 2026-10-13 e 2026-10-14).
+#
+# A ordem não muda para quem tem releases: o `origin` responde primeiro, para a
+# release e para cada tag. O upstream só é perguntado quando o `origin` não sabe — e
+# nunca em silêncio (o aviso sai no stderr). Sem resposta dos dois REPROVA do mesmo
+# jeito: o fallback acrescenta uma fonte, não afrouxa a regra.
+#   CONFERENCIA_KIT_UPSTREAM      owner/repo do upstream (padrão: melgarafael/DeskcommCRM)
+#   CONFERENCIA_KIT_UPSTREAM_GIT  de onde buscar as tags (padrão: https://github.com/<upstream>.git)
+#   CONFERENCIA_KIT_UPSTREAM_API  endpoint de /releases/latest (padrão: api.github.com/repos/<upstream>/releases/latest)
+UPSTREAM="${CONFERENCIA_KIT_UPSTREAM:-melgarafael/DeskcommCRM}"
+UPSTREAM_GIT="${CONFERENCIA_KIT_UPSTREAM_GIT:-https://github.com/${UPSTREAM}.git}"
+UPSTREAM_API="${CONFERENCIA_KIT_UPSTREAM_API:-https://api.github.com/repos/${UPSTREAM}/releases/latest}"
+
 release="${CONFERENCIA_KIT_RELEASE:-}"
 if [ -z "$release" ] && [ -n "${GH_TOKEN:-}" ] && command -v gh >/dev/null 2>&1; then
   release="$(cd "$ROOT" && gh release view --json tagName -q .tagName 2>/dev/null || true)"
 fi
 if [ -z "$release" ]; then
   release="$(cd "$ROOT" && bash -c 'source "$1/_common.sh" >/dev/null 2>&1; ultima_release_estavel' _ "$KIT" || true)"
+fi
+if [ -z "$release" ]; then
+  # O origin não tem release publicada: pergunta ao upstream. Com GH_TOKEN pela API
+  # autenticada (a anônima tem teto de 60 consultas/hora por IP, e o runner é um IP
+  # compartilhado); sem ele, pelo mesmo `ultima_release_estavel` do kit.
+  if [ -n "${GH_TOKEN:-}" ] && [ -z "${CONFERENCIA_KIT_UPSTREAM_API:-}" ] && command -v gh >/dev/null 2>&1; then
+    release="$(cd "$ROOT" && gh release view -R "$UPSTREAM" --json tagName -q .tagName 2>/dev/null || true)"
+  fi
+  if [ -z "$release" ]; then
+    release="$(cd "$ROOT" && DESKCOMM_RELEASES_LATEST_URL="$UPSTREAM_API" bash -c 'source "$1/_common.sh" >/dev/null 2>&1; ultima_release_estavel' _ "$KIT" || true)"
+  fi
+  case "$release" in
+    v[0-9]*) echo "aviso: o origin não tem release publicada; conferindo contra a do upstream ($UPSTREAM): $release" >&2 ;;
+  esac
 fi
 case "$release" in
   v[0-9]*) ;;
@@ -84,9 +120,29 @@ TMP="$(mktemp -d "${TMPDIR:-/tmp}/deskcomm-update-sh.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 update_sh_da() {  # update_sh_da <tag> — caminho de uma cópia do update.sh da tag
   if ! git -C "$ROOT" rev-parse -q --verify "refs/tags/$1^{commit}" >/dev/null; then
-    local profundidade=""
+    local profundidade="" origem_tag
     [ "$(git -C "$ROOT" rev-parse --is-shallow-repository)" = true ] && profundidade="--depth=1"
-    git -C "$ROOT" fetch -q --no-tags $profundidade origin "+refs/tags/$1:refs/tags/$1"
+    # Distingue ausência confirmada (ls-remote bem-sucedido, sem resultado) de
+    # falha de rede/autorização. Somente ausência permite consultar o upstream.
+    if ! origem_tag="$(git -C "$ROOT" ls-remote --tags origin "refs/tags/$1" "refs/tags/$1^{}")"; then
+      echo "FATAL: não consegui consultar as tags do origin para $1; não vou mascarar falha de rede/autorização com fallback." >&2
+      return 1
+    fi
+    local fonte=origin
+    if [ -z "$origem_tag" ]; then
+      echo "aviso: a tag $1 está ausente no origin; tentando upstream ($UPSTREAM_GIT)." >&2
+      if ! origem_tag="$(git ls-remote --tags "$UPSTREAM_GIT" "refs/tags/$1" "refs/tags/$1^{}")"; then
+        echo "FATAL: falha ao consultar tags do upstream para $1 ($UPSTREAM_GIT)." >&2
+        return 1
+      fi
+      [ -n "$origem_tag" ] || { echo "FATAL: a tag $1 não existe no origin nem no upstream ($UPSTREAM_GIT)." >&2; return 1; }
+      fonte="$UPSTREAM_GIT"
+    fi
+    # A busca só ocorre na fonte cuja presença foi confirmada acima.
+    if ! git -C "$ROOT" fetch -q --no-tags $profundidade "$fonte" "+refs/tags/$1:refs/tags/$1"; then
+      echo "FATAL: a tag $1 foi anunciada por $fonte, mas não pôde ser buscada; sem fallback após erro de fetch." >&2
+      return 1
+    fi
   fi
   git -C "$ROOT" show "$1:hostgator-setup-kit/update.sh" > "$TMP/$1"
   printf '%s' "$TMP/$1"
@@ -107,6 +163,16 @@ conferir() {
   if ! saida="$(
     cd "$ROOT"
     # O kit roda sob `set -euo pipefail` (_common.sh), e o trecho também.
+    # O trecho vem de um update.sh de release e é avaliado como shell. Ele só
+    # precisa do contexto local do banco; jamais deve herdar credenciais do CI.
+    # Remova nomes comuns de segredos além dos tokens GitHub explicitamente
+    # usados acima para consultar metadados/repositórios.
+    while IFS= read -r nome; do
+      case "${nome^^}" in
+        *TOKEN*|*SECRET*|*PASS*|*CREDENTIAL*|*KEY*|*COOKIE*|*AUTH*) unset "$nome" ;;
+      esac
+    done < <(compgen -e)
+    unset GH_TOKEN GITHUB_TOKEN BASH_ENV ENV
     url_do_schema() { printf 'test-db'; }
     pg_container() {
       while [ $# -gt 0 ] && [ "${1#-}" != "$1" ]; do shift; done
